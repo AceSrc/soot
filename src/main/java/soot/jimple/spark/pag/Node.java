@@ -61,6 +61,9 @@ public class Node implements ReferenceVariable, Numberable {
    * this if the node has not been merged.
    */
   public Node getReplacement() {
+    if (replacement != this) {
+      throw new RuntimeException("Wuhu.");
+    }
     if (replacement != replacement.replacement) {
       replacement = replacement.getReplacement();
     }
@@ -163,5 +166,5 @@ public class Node implements ReferenceVariable, Numberable {
   protected Type type;
   protected Node replacement;
   protected PAG pag;
-  protected PointsToSetInternal p2set;
+  public PointsToSetInternal p2set;
 }

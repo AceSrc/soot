@@ -69,6 +69,8 @@ public final class HybridPointsToSet extends PointsToSetInternal {
 
       BitVector ebits = (exclude == null ? null : exclude.bits);
       ret = bits.orAndAndNot(other.bits, mask, ebits);
+
+      sz = bits.bitCount();
     } else {
       for (int i = 0; i < nodes.length; i++) {
         if (other.nodes[i] == null) {
@@ -157,6 +159,7 @@ public final class HybridPointsToSet extends PointsToSetInternal {
         if (nodes[i] == null) {
           empty = false;
           nodes[i] = n;
+          sz++;
           return true;
         } else if (nodes[i] == n) {
           return false;
@@ -166,6 +169,7 @@ public final class HybridPointsToSet extends PointsToSetInternal {
     }
     boolean ret = bits.set(n.getNumber());
     if (ret) {
+      sz++;
       empty = false;
     }
     return ret;
@@ -179,6 +183,7 @@ public final class HybridPointsToSet extends PointsToSetInternal {
     bits = new BitVector(pag.getAllocNodeNumberer().size());
     for (Node node : nodes) {
       if (node != null) {
+        sz--;
         fastAdd(node);
       }
     }
@@ -189,6 +194,11 @@ public final class HybridPointsToSet extends PointsToSetInternal {
   private BitVector bits = null;
   private PAG pag;
   private boolean empty = true;
+  private int sz;
+
+  public int instant_size() {
+    return sz;
+  }
 
   public static HybridPointsToSet intersection(final HybridPointsToSet set1, final HybridPointsToSet set2, PAG pag) {
     final HybridPointsToSet ret = new HybridPointsToSet(Scene.v().getObjectType(), pag);

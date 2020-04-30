@@ -98,6 +98,7 @@ import soot.util.queue.QueueReader;
  */
 public class PAG implements PointsToAnalysis {
   private static final Logger logger = LoggerFactory.getLogger(PAG.class);
+  public Set<VarNode> list = null;
 
   public PAG(final SparkOptions opts) {
     this.opts = opts;
@@ -290,7 +291,12 @@ public class PAG implements PointsToAnalysis {
   }
 
   public boolean doAddSimpleEdge(VarNode from, VarNode to) {
-    return addToMap(simple, from, to) | addToMap(simpleInv, to, from);
+    boolean rt = addToMap(simple, from, to);
+    if (rt) {
+      if (to.alone()) to.new_p2set();
+      to.simple_in++;
+    }
+    return rt | addToMap(simpleInv, to, from);
   }
 
   public boolean doAddStoreEdge(VarNode from, FieldRefNode to) {
@@ -298,7 +304,12 @@ public class PAG implements PointsToAnalysis {
   }
 
   public boolean doAddLoadEdge(FieldRefNode from, VarNode to) {
-    return addToMap(load, from, to) | addToMap(loadInv, to, from);
+    boolean rt = addToMap(load, from, to);
+    if (rt) {
+      if (to.alone()) to.new_p2set();
+      to.load_in++;
+    }
+    return rt | addToMap(loadInv, to, from);
   }
 
   public boolean doAddAllocEdge(AllocNode from, VarNode to) {
@@ -317,6 +328,12 @@ public class PAG implements PointsToAnalysis {
   void mergedWith(Node n1, Node n2) {
     if (n1.equals(n2)) {
       throw new RuntimeException("oops");
+    }
+    if (n1.getReplacement() != n1) {
+      throw new RuntimeException("oopsn1");
+    }
+    if (n2.getReplacement() != n2) {
+      throw new RuntimeException("oopsn2");
     }
 
     somethingMerged = true;
@@ -388,7 +405,7 @@ public class PAG implements PointsToAnalysis {
         }
         m.put(n1, s);
       }
-      m.remove(n2);
+//      m.remove(n2);
     }
   }
 
@@ -410,47 +427,47 @@ public class PAG implements PointsToAnalysis {
       }
     }
     Node[] ret = (Node[]) valueList;
-    if (somethingMerged) {
-      for (int i = 0; i < ret.length; i++) {
-        Node reti = ret[i];
-        Node rep = reti.getReplacement();
-        if (rep != reti || rep == key) {
-          Set<Node> s;
-          if (ret.length <= 75) {
-            int j = i;
-            outer: for (; i < ret.length; i++) {
-              reti = ret[i];
-              rep = reti.getReplacement();
-              if (rep == key) {
-                continue;
-              }
-              for (int k = 0; k < j; k++) {
-                if (rep == ret[k]) {
-                  continue outer;
-                }
-              }
-              ret[j++] = rep;
-            }
-            Node[] newArray = new Node[j];
-            System.arraycopy(ret, 0, newArray, 0, j);
-            m.put(key, ret = newArray);
-          } else {
-            s = new HashSet<Node>(ret.length * 2);
-            for (int j = 0; j < i; j++) {
-              s.add(ret[j]);
-            }
-            for (int j = i; j < ret.length; j++) {
-              rep = ret[j].getReplacement();
-              if (rep != key) {
-                s.add(rep);
-              }
-            }
-            m.put(key, ret = s.toArray(EMPTY_NODE_ARRAY));
-          }
-          break;
-        }
-      }
-    }
+//    if (somethingMerged) {
+//      for (int i = 0; i < ret.length; i++) {
+//        Node reti = ret[i];
+//        Node rep = reti.getReplacement();
+//        if (rep != reti || rep == key) {
+//          Set<Node> s;
+//          if (ret.length <= 75) {
+//            int j = i;
+//            outer: for (; i < ret.length; i++) {
+//              reti = ret[i];
+//              rep = reti.getReplacement();
+//              if (rep == key) {
+//                continue;
+//              }
+//              for (int k = 0; k < j; k++) {
+//                if (rep == ret[k]) {
+//                  continue outer;
+//                }
+//              }
+//              ret[j++] = rep;
+//            }
+//            Node[] newArray = new Node[j];
+//            System.arraycopy(ret, 0, newArray, 0, j);
+//            m.put(key, ret = newArray);
+//          } else {
+//            s = new HashSet<Node>(ret.length * 2);
+//            for (int j = 0; j < i; j++) {
+//              s.add(ret[j]);
+//            }
+//            for (int j = i; j < ret.length; j++) {
+//              rep = ret[j].getReplacement();
+//              if (rep != key) {
+//                s.add(rep);
+//              }
+//            }
+//            m.put(key, ret = s.toArray(EMPTY_NODE_ARRAY));
+//          }
+//          break;
+//        }
+//      }
+//    }
     return ret;
   }
 
@@ -1442,6 +1459,7 @@ public class PAG implements PointsToAnalysis {
   protected Map<VarNode, Object> assignInstanceInv = new HashMap<VarNode, Object>();
 
   protected <K extends Node> boolean addToMap(Map<K, Object> m, K key, Node value) {
+    key = (K)key.getReplacement();
     Object valueList = m.get(key);
 
     if (valueList == null) {

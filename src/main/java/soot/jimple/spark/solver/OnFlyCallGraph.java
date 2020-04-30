@@ -124,6 +124,10 @@ public class OnFlyCallGraph {
   }
 
   public void updatedNode(VarNode vn) {
+    this.updatedNode(vn, vn.getP2Set().getNewSet());
+  }
+
+  public void updatedNode(VarNode vn, PointsToSetInternal p2set) {
     Object r = vn.getVariable();
     if (!(r instanceof Local)) {
       return;
@@ -131,7 +135,7 @@ public class OnFlyCallGraph {
     final Local receiver = (Local) r;
     final Context context = vn.context();
 
-    PointsToSetInternal p2set = vn.getP2Set().getNewSet();
+//    PointsToSetInternal p2set = vn.getP2Set().getNewSet();
     if (ofcgb.wantTypes(receiver)) {
       p2set.forall(new P2SetVisitor() {
         public final void visit(Node n) {
@@ -180,6 +184,7 @@ public class OnFlyCallGraph {
   /** Node uses this to notify PAG that n2 has been merged into n1. */
   public void mergedWith(Node n1, Node n2) {
   }
+
 
   /* End of public methods. */
   /* End of package methods. */

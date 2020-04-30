@@ -22,10 +22,7 @@ package soot.jimple.spark.pag;
  * #L%
  */
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +31,7 @@ import soot.AnySubType;
 import soot.Context;
 import soot.RefLikeType;
 import soot.Type;
+import soot.jimple.spark.sets.PointsToSetInternal;
 import soot.toolkits.scalar.Pair;
 
 /**
@@ -42,6 +40,35 @@ import soot.toolkits.scalar.Pair;
  * @author Ondrej Lhotak
  */
 public abstract class VarNode extends ValNode implements Comparable {
+  public VarNode parent;
+  public List<VarNode> members = new LinkedList<VarNode>();
+  public int simple_in = 0, load_in = 0;
+  public int K;
+
+  public boolean alone() {
+    return simple_in == 1 && load_in == 0;
+  }
+
+  public void new_p2set() {
+    if (p2set != null) {
+      PointsToSetInternal newp2set = pag.getSetFactory().newSet(type, pag);
+      newp2set.addAll(p2set, null);
+      p2set = newp2set;
+    }
+    else {
+      p2set = pag.getSetFactory().newSet(type, pag);
+    }
+  }
+//  public Set<VarNode> S = new HashSet<VarNode>();
+
+  public VarNode find() {
+//    return this;
+    if (parent == this) return this;
+//    parent = parent.find();
+//    if (parent.getP2Set().instant_size() != p2set.instant_size()) parent = this;
+    return parent.find();
+  }
+
   private static final Logger logger = LoggerFactory.getLogger(VarNode.class);
 
   public Context context() {
@@ -70,7 +97,14 @@ public abstract class VarNode extends ValNode implements Comparable {
       logger.debug("" + "Other is: " + other + " with id " + other.getNumber() + " and number " + other.finishingNumber);
       throw new RuntimeException("Comparison error");
     }
-    return other.finishingNumber - finishingNumber;
+//    return other.finishingNumber - finishingNumber;
+//    return finishingNumber - other.finishingNumber;
+    if (other.K == K) {
+        return other.finishingNumber - finishingNumber;
+    }
+    else {
+      return other.K - K;
+    }
   }
 
   public void setFinishingNumber(int i) {
@@ -79,6 +113,8 @@ public abstract class VarNode extends ValNode implements Comparable {
       pag.maxFinishNumber = i;
     }
   }
+
+  public int getFinishingNumber() { return finishingNumber; }
 
   /** Returns the underlying variable that this node represents. */
   public Object getVariable() {
@@ -131,12 +167,14 @@ public abstract class VarNode extends ValNode implements Comparable {
 
   VarNode(PAG pag, Object variable, Type t) {
     super(pag, t);
+    parent = this;
     if (!(t instanceof RefLikeType) || t instanceof AnySubType) {
       throw new RuntimeException("Attempt to create VarNode of type " + t);
     }
     this.variable = variable;
     pag.getVarNodeNumberer().add(this);
     setFinishingNumber(++pag.maxFinishNumber);
+//    members.add(this);
   }
 
   /** Registers a frn as having this node as its base. */
@@ -155,4 +193,45 @@ public abstract class VarNode extends ValNode implements Comparable {
   protected boolean interProcTarget = false;
   protected boolean interProcSource = false;
   protected int numDerefs = 0;
+
+  public void mergeWith(VarNode other) {
+    if (other.replacement != other) {
+      throw new RuntimeException("Shouldn't happen in VarNode merge");
+    }
+
+    if (replacement != this) {
+      throw new RuntimeException("Shouldn't happen in VarNode merge");
+    }
+
+    VarNode myRep = (VarNode)getReplacement();
+    if (other == myRep) {
+      return;
+    }
+
+    if (other.p2set != myRep.p2set && other.p2set != null && !other.p2set.isEmpty()) {
+      if (myRep.p2set == null || myRep.p2set.isEmpty()) {
+        myRep.p2set = other.p2set;
+      } else {
+        myRep.p2set.mergeWith(other.p2set);
+      }
+    }
+    if (other.p2set != null && other.p2set.getNewSet().isEmpty()) other.p2set = null;
+
+    pag.mergedWith(myRep, other);
+    other.replacement = myRep;
+    if (other.isInterProcTarget() && !myRep.isInterProcTarget()) {
+      for (VarNode u : myRep.members) u.setInterProcTarget();
+    }
+    else if (!other.isInterProcTarget() && myRep.isInterProcTarget()) {
+      for (VarNode u : other.members) u.setInterProcTarget();
+    }
+
+//    if (myRep.members.size() > other.members.size())
+    myRep.members.addAll(other.members);
+//    else {
+//      other.members.addAll(myRep.members);
+//      myRep.members = other.members;
+//    }
+//    other.members = null;
+  }
 }

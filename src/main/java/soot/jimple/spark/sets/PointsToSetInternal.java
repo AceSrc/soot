@@ -48,6 +48,10 @@ import soot.util.BitVector;
 public abstract class PointsToSetInternal implements PointsToSet, EqualsSupportingPointsToSet {
   private static final Logger logger = LoggerFactory.getLogger(PointsToSetInternal.class);
 
+  public int instant_size() {
+    return 0;
+  }
+
   /**
    * Adds contents of other minus the contents of exclude into this set; returns true if this set changed.
    */

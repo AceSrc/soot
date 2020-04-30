@@ -38,6 +38,11 @@ import soot.jimple.spark.pag.PAG;
  * @author Ondrej Lhotak
  */
 public class DoublePointsToSet extends PointsToSetInternal {
+
+  public int instant_size() {
+    return oldSet.instant_size() + newSet.instant_size();
+  }
+
   public DoublePointsToSet(Type type, PAG pag) {
     super(type);
     newSet = G.v().newSetFactory.newSet(type, pag);

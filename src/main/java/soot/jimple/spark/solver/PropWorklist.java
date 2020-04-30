@@ -10,12 +10,12 @@ package soot.jimple.spark.solver;
  * it under the terms of the GNU Lesser General Public License as
  * published by the Free Software Foundation, either version 2.1 of the
  * License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Lesser Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Lesser Public
  * License along with this program.  If not, see
  * <http://www.gnu.org/licenses/lgpl-2.1.html>.
@@ -50,13 +50,14 @@ import soot.util.queue.QueueReader;
 
 /**
  * Propagates points-to sets along pointer assignment graph using a worklist.
- * 
+ *
  * @author Ondrej Lhotak
  */
 
 public class PropWorklist extends Propagator {
   private static final Logger logger = LoggerFactory.getLogger(PropWorklist.class);
   protected final Set<VarNode> varNodeWorkList = new TreeSet<VarNode>();
+  long ofcg_time = 0;
 
   public PropWorklist(PAG pag) {
     this.pag = pag;
@@ -69,8 +70,10 @@ public class PropWorklist extends Propagator {
     for (AllocNode object : pag.allocSources()) {
       handleAllocNode(object);
     }
+    pag.list = varNodeWorkList;
 
     boolean verbose = pag.getOpts().verbose();
+    long startTime = System.nanoTime();
     do {
       if (verbose) {
         logger.debug("Worklist has " + varNodeWorkList.size() + " nodes.");
@@ -80,6 +83,7 @@ public class PropWorklist extends Propagator {
         varNodeWorkList.remove(src);
         handleVarNode(src);
       }
+      new TopoSorter(pag, false).sort();
       if (verbose) {
         logger.debug("Now handling field references");
       }
@@ -88,7 +92,7 @@ public class PropWorklist extends Propagator {
         Node[] targets = pag.storeLookup(src);
         for (Node element0 : targets) {
           final FieldRefNode target = (FieldRefNode) element0;
-          target.getBase().makeP2Set().forall(new P2SetVisitor() {
+          target.getBase().getP2Set().forall(new P2SetVisitor() {
             public final void visit(Node n) {
               AllocDotField nDotF = pag.makeAllocDotField((AllocNode) n, target.getField());
               if (ofcg != null) {
@@ -117,6 +121,15 @@ public class PropWorklist extends Propagator {
         nDotF.flushNew();
       }
     } while (!varNodeWorkList.isEmpty());
+    double G = 1000000000.0;
+    System.out.println("Analyzed Time: " + ((System.nanoTime() - startTime) / G));
+    System.out.println("ofcg update Time: " + (ofcg_time) / G);
+
+    long cnt = 0;
+    for (VarNode u : pag.getVarNodeNumberer()) {
+      cnt += u.getP2Set().size();
+    }
+    System.out.println(cnt);
   }
 
   /* End of public methods. */
@@ -130,6 +143,7 @@ public class PropWorklist extends Propagator {
     Node[] targets = pag.allocLookup(src);
     for (Node element : targets) {
       if (element.makeP2Set().add(src)) {
+        ((VarNode)element).simple_in = 1000;
         varNodeWorkList.add((VarNode) element);
         ret = true;
       }
@@ -140,7 +154,12 @@ public class PropWorklist extends Propagator {
   /**
    * Propagates new points-to information of node src to all its successors.
    */
+  int G = -1;
   protected boolean handleVarNode(final VarNode src) {
+    G++;
+    String prefix = "";
+    for (int i = 0; i < G; i++) prefix += " ";
+
     boolean ret = false;
     boolean flush = true;
 
@@ -150,13 +169,16 @@ public class PropWorklist extends Propagator {
 
     final PointsToSetInternal newP2Set = src.getP2Set().getNewSet();
     if (newP2Set.isEmpty()) {
+      G--;
       return false;
     }
 
     if (ofcg != null) {
       QueueReader<Node> addedEdges = pag.edgeReader();
+      long startTime = System.nanoTime();
       ofcg.updatedNode(src);
       ofcg.build();
+      ofcg_time += System.nanoTime() - startTime;
 
       while (addedEdges.hasNext()) {
         Node addedSrc = (Node) addedEdges.next();
@@ -164,8 +186,20 @@ public class PropWorklist extends Propagator {
         ret = true;
         if (addedSrc instanceof VarNode) {
           VarNode edgeSrc = (VarNode) addedSrc.getReplacement();
+
           if (addedTgt instanceof VarNode) {
             VarNode edgeTgt = (VarNode) addedTgt.getReplacement();
+
+            if (edgeTgt.alone() && edgeSrc.getType() == edgeTgt.getType()) {
+              if (edgeTgt == src) {
+                throw new RuntimeException("Hoo.");
+              }
+              if (edgeTgt.p2set == null) {
+                edgeTgt.p2set = edgeSrc.getP2Set();
+                edgeSrc.members.add(edgeTgt);
+              }
+              continue;
+            }
 
             if (edgeTgt.makeP2Set().addAll(edgeSrc.getP2Set(), null)) {
               varNodeWorkList.add(edgeTgt);
@@ -228,7 +262,17 @@ public class PropWorklist extends Propagator {
     }
 
     Node[] simpleTargets = pag.simpleLookup(src);
+//    System.out.println(prefix + "Enter " + src.getFinishingNumber() + "(" + src.alone() + ")" + newP2Set.instant_size());
     for (Node element : simpleTargets) {
+      VarNode dst = (VarNode)element;
+      if (dst.alone() && src.getType() == dst.getType()) {
+//        System.out.println(prefix + src.getFinishingNumber() + " skiped " + dst.getFinishingNumber() + "(" + (dst.p2set == null) + ")");
+        if (dst.p2set == null) {
+          dst.p2set = src.getP2Set();
+          src.members.add(dst);
+        }
+        continue;
+      }
       if (element.makeP2Set().addAll(newP2Set, null)) {
         varNodeWorkList.add((VarNode) element);
         if (element == src) {
@@ -284,8 +328,13 @@ public class PropWorklist extends Propagator {
         });
       }
     }
-    if (flush) {
-      src.getP2Set().flushNew();
+
+    for (VarNode v : src.members)
+      handleVarNode(v);
+    if (!src.alone()) {
+      if (flush) {
+        src.getP2Set().flushNew();
+      }
     }
     for (Node[] p : storesToPropagate) {
       VarNode storeSource = (VarNode) p[0];
@@ -302,6 +351,7 @@ public class PropWorklist extends Propagator {
         ret = true;
       }
     }
+    G--;
     return ret;
   }
 

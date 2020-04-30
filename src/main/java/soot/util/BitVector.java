@@ -48,6 +48,13 @@ public class BitVector {
 
   private long[] bits;
 
+  public int bitCount() {
+    int rt = 0;
+    for (int i = 0; i < bits.length; i++)
+      if (bits[i] != 0) rt += Long.bitCount(bits[i]);
+    return rt;
+  }
+
   private int indexOf(int bit) {
     return bit >> 6;
   }
